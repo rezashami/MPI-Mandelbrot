@@ -84,9 +84,7 @@ void madelbrot(int myid,int nx,int ny, int maxIter, float realMin, float realMax
 			}
 			//putting colours in corresponding pixel (w,h)
 			img[(w + h*nx) * 3 + 2] = color[0];
-			
 			img[(w + h*nx) * 3 + 1] = color[1];
-
 			img[(w + h*nx) * 3 + 0] = color[2];
 			
 		}
@@ -104,66 +102,74 @@ int main(int argc, char** argv) {
 	MPI_Comm_size(MPI_COMM_WORLD, &world_size);
 	MPI_Comm_rank(MPI_COMM_WORLD, &myid);
 	
-	
+	/*Max iterations number*/
 	const int iterations = 1000;
+
+	/*Real number minimum and maximum*/
 	const float realMin = -2.0;
 	const float realMax = 1.0;
+
+	/*Set the information of bmp file*/
 	const int iXmax = 900;
 	const int iYmax = 600;
-	
+
+	/*Master section*/
 	if (myid == 0)
 	{
+		/*Image pointer to create bmp file*/
 		unsigned char *img = NULL;
+
+		/*Pointer to file*/
 		FILE * fp;
+
+		/*bmp file nmae*/
 		char *filename = "new1.bmp";    //bmp version
 
-
+		/*Set start time to calculate running time*/
 		double t1 = MPI_Wtime();
-		//const int myYmin = 0;
-		//const int myYmax = 149;
 
-
+		/*Divide the imaginary section to number of proccesses.*/
+		double incerment_imag = 2 / world_size;
 		const double myImagMin = -1.00;
-		const double myImagMax = -0.49;
+		const double myImagMax = -1 + (incerment_imag - 0.01);
+
+		/*File section*/
 		int filesize = 54 + 3 * iXmax * iYmax;
 		if (img)
 			delete img;
 		img = new unsigned char[3 * iXmax * iYmax];
 		memset(img, 0, sizeof(img));
-		/*apoaskcpoacoaskcoakcs*/
 
-		//int myYmin_temp = 150;
-
-		double myImagMin_temp = -0.50;
-
-
+		/*Divide the img array with this pionner*/
 		int array_index = 810000;
 		for (int i = 1; i < world_size; i++)
 		{
-			//MPI_Send(&myYmin_temp, 1, MPI_INT, i, 0, MPI_COMM_WORLD);
-			
-			MPI_Send(&myImagMin_temp, 1, MPI_DOUBLE, i, 0, MPI_COMM_WORLD);
+			/*Send the incerment_imag number to i proccess as start imaginary number*/
+			MPI_Send(&incerment_imag, 1, MPI_DOUBLE, i, 0, MPI_COMM_WORLD);
 
+			/*Send array to i proccess*/
 			MPI_Send(img+array_index, 405000, MPI_UNSIGNED_CHAR, i, 0, MPI_COMM_WORLD);
+
+			/*Decrease the pionner*/
 			array_index -= 405000;
 
-			//printf_s("Data sent\n");
-			//myYmin_temp += 150;
-			myImagMin_temp += 0.50;
+			/*Increase the incerment_imag*/
+			incerment_imag += 0.50;
 		}
-
+		/*Execute mandelbrot with proccess infromation*/
 		madelbrot(myid,iXmax,150,iterations,realMin,realMax,myImagMin,myImagMax,img+ 1215000);
-		
-
+		/*Set the pionner to defualt value*/
 		array_index = 810000;
 		for (int i = 1; i < world_size; i++) {
 			MPI_Status st;
+
+			/*Recieve the imag array information*/
 			MPI_Recv(img + (array_index), 405000, MPI_UNSIGNED_CHAR, i, 0, MPI_COMM_WORLD, &st);
-			
-			
+
+			/*Increase the array_index*/
 			array_index -= 405000;
 		}
-
+		/*Write section*/
 		unsigned char bmpfileheader[14] = { 'B', 'M', 0, 0, 0, 0, 0, 0, 0, 0, 54, 0, 0, 0 };
 		unsigned char bmpinfoheader[40] = { 40, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 24, 0 };
 		unsigned char bmppad[3] = { 0, 0, 0 };
@@ -192,14 +198,15 @@ int main(int argc, char** argv) {
 			fwrite(bmppad, 1, (4 - (iXmax * 3) % 4) % 4, fp);
 		}
 		fclose(fp);
+
+		/*Print the runnig time duretion*/
 		std::cout << "The time is:" << MPI_Wtime() - t1 << " from proccess: " << myid << "\n";
 	}
 	else {
+		/*Recieved array stored in this variable*/
 		unsigned char* myBuffer = new unsigned char[405000];
-		double t1 = MPI_Wtime();
-		//int myYmin = 0;
-		//int myYmax = 149;
 
+		/*Recieved imaginary information stored in this variables*/
 		double myImagMin = -1.00;
 		double myImagMax = -0.49;
 
@@ -207,24 +214,22 @@ int main(int argc, char** argv) {
 		MPI_Status st2;
 		MPI_Status st3;
 
-		//MPI_Recv(&myYmin, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, &st);
+		/*Recieve the imaginary information */
 		MPI_Recv(&myImagMin, 1, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD, &st2);
+		
+		/*Recieve the array information */
 		MPI_Recv(myBuffer, 405000, MPI_UNSIGNED_CHAR, 0, 0, MPI_COMM_WORLD, &st3);
 
-		//myYmax= myYmin + 149;
+		/*Calculate end of imaginary number*/
 		myImagMax = myImagMin + 0.49;
 
+		/*Execute mandelbrot with proccess infromation*/
 		madelbrot(myid,iXmax, 150, iterations, realMin, realMax, myImagMin, myImagMax,myBuffer);
 
-		
-		
+		/*Send the calculated array*/
 		MPI_Send(myBuffer, 405000, MPI_UNSIGNED_CHAR, 0, 0, MPI_COMM_WORLD);
-		std::cout << "The time is:" << MPI_Wtime() - t1 << " from proccess: " << myid << "\n";
-	}
-
-	MPI_Barrier(MPI_COMM_WORLD);
-	
+	}	
+	/*Finilized the MPI*/
 	MPI_Finalize();
-	
 	return 0;
 }
