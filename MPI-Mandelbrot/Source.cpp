@@ -39,12 +39,12 @@ int iterate(Complex zInit, int maxIter) {
 }
 
 
-void madelbrot(int myid,int nx,int ny, int maxIter, float realMin, float realMax, float imagMin, float imagMax,unsigned char* img) {
+void madelbrot(int nx, int ny, int maxIter, float realMin, float realMax, float imagMin, float imagMax, unsigned char* img) {
 
 	static unsigned char color[3];
 	float realInc = (realMax - realMin) / nx;
 	float imagInc = (imagMax - imagMin) / ny;
-	
+
 	Complex z;
 	int x, y, w, h;
 	int cnt;
@@ -86,7 +86,7 @@ void madelbrot(int myid,int nx,int ny, int maxIter, float realMin, float realMax
 			img[(w + h*nx) * 3 + 2] = color[0];
 			img[(w + h*nx) * 3 + 1] = color[1];
 			img[(w + h*nx) * 3 + 0] = color[2];
-			
+
 		}
 	}
 }
@@ -101,7 +101,7 @@ int main(int argc, char** argv) {
 	MPI_Init(&argc, &argv);
 	MPI_Comm_size(MPI_COMM_WORLD, &world_size);
 	MPI_Comm_rank(MPI_COMM_WORLD, &myid);
-	
+
 	/*Max iterations number*/
 	const int iterations = 1000;
 
@@ -127,11 +127,10 @@ int main(int argc, char** argv) {
 
 		/*Set start time to calculate running time*/
 		double t1 = MPI_Wtime();
-
 		/*Divide the imaginary section to number of proccesses.*/
-		double incerment_imag = 2 / world_size;
+		double incerment_imag =2/world_size;
 		const double myImagMin = -1.00;
-		const double myImagMax = -1 + (incerment_imag - 0.01);
+		const double myImagMax = -0.50;
 
 		/*File section*/
 		int filesize = 54 + 3 * iXmax * iYmax;
@@ -142,22 +141,23 @@ int main(int argc, char** argv) {
 
 		/*Divide the img array with this pionner*/
 		int array_index = 810000;
+		incerment_imag = -0.5;
 		for (int i = 1; i < world_size; i++)
 		{
 			/*Send the incerment_imag number to i proccess as start imaginary number*/
 			MPI_Send(&incerment_imag, 1, MPI_DOUBLE, i, 0, MPI_COMM_WORLD);
 
 			/*Send array to i proccess*/
-			MPI_Send(img+array_index, 405000, MPI_UNSIGNED_CHAR, i, 0, MPI_COMM_WORLD);
+			MPI_Send(img + array_index, 405000, MPI_UNSIGNED_CHAR, i, 0, MPI_COMM_WORLD);
 
 			/*Decrease the pionner*/
 			array_index -= 405000;
 
 			/*Increase the incerment_imag*/
-			incerment_imag += 0.50;
+			incerment_imag += 0.5;
 		}
 		/*Execute mandelbrot with proccess infromation*/
-		madelbrot(myid,iXmax,150,iterations,realMin,realMax,myImagMin,myImagMax,img+ 1215000);
+		madelbrot( iXmax, 150, iterations, realMin, realMax, myImagMin, myImagMax, img + 1215000);
 		/*Set the pionner to defualt value*/
 		array_index = 810000;
 		for (int i = 1; i < world_size; i++) {
@@ -207,16 +207,15 @@ int main(int argc, char** argv) {
 		unsigned char* myBuffer = new unsigned char[405000];
 
 		/*Recieved imaginary information stored in this variables*/
-		double myImagMin = -1.00;
-		double myImagMax = -0.49;
+		double myImagMin;
+		double myImagMax;
 
-		MPI_Status st;
 		MPI_Status st2;
 		MPI_Status st3;
 
 		/*Recieve the imaginary information */
 		MPI_Recv(&myImagMin, 1, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD, &st2);
-		
+
 		/*Recieve the array information */
 		MPI_Recv(myBuffer, 405000, MPI_UNSIGNED_CHAR, 0, 0, MPI_COMM_WORLD, &st3);
 
@@ -224,11 +223,11 @@ int main(int argc, char** argv) {
 		myImagMax = myImagMin + 0.49;
 
 		/*Execute mandelbrot with proccess infromation*/
-		madelbrot(myid,iXmax, 150, iterations, realMin, realMax, myImagMin, myImagMax,myBuffer);
+		madelbrot(iXmax, 150, iterations, realMin, realMax, myImagMin, myImagMax, myBuffer);
 
 		/*Send the calculated array*/
 		MPI_Send(myBuffer, 405000, MPI_UNSIGNED_CHAR, 0, 0, MPI_COMM_WORLD);
-	}	
+	}
 	/*Finilized the MPI*/
 	MPI_Finalize();
 	return 0;
