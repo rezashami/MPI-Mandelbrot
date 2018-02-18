@@ -19,6 +19,18 @@ typedef struct {
 	float x, y;
 } Complex;
 
+typedef struct info_s {
+	float yMin;
+	int startIndex;
+} infoSend;
+
+
+typedef struct info_r {
+	float yMin;
+	int startIndex;
+	unsigned char buffer[2700];
+} infoRecieve;
+
 Complex complexSquare(Complex c) {
 	Complex cSq;
 	cSq.x = c.x * c.x - c.y * c.y;
@@ -117,7 +129,7 @@ void embarrassedly_master(int world_size, const int iXmax, const int iYmax, cons
 	memset(img, 0, sizeof(img));
 
 	/*Divide the img array with this pionner*/
-	int array_index = 3240000;
+	int array_index = 810000;
 	incerment_imag = -0.5;
 	for (int i = 1; i < world_size; i++)
 	{
@@ -125,26 +137,26 @@ void embarrassedly_master(int world_size, const int iXmax, const int iYmax, cons
 		MPI_Send(&incerment_imag, 1, MPI_DOUBLE, i, 0, MPI_COMM_WORLD);
 
 		/*Send array to i proccess*/
-		MPI_Send(img + array_index, 1620000, MPI_UNSIGNED_CHAR, i, 0, MPI_COMM_WORLD);
+		MPI_Send(img + array_index, 405000, MPI_UNSIGNED_CHAR, i, 0, MPI_COMM_WORLD);
 
 		/*Decrease the pionner*/
-		array_index -= 1620000;
+		array_index -= 405000;
 
 		/*Increase the incerment_imag*/
 		incerment_imag += 0.5;
 	}
 	/*Execute mandelbrot with proccess infromation*/
-	madelbrot(iXmax, 300, iterations, realMin, realMax, myImagMin, myImagMax, img + 4860000);
+	madelbrot(iXmax, 150, iterations, realMin, realMax, myImagMin, myImagMax, img + 1215000);
 	/*Set the pionner to defualt value*/
-	array_index = 3240000;
+	array_index = 810000;
 	for (int i = 1; i < world_size; i++) {
 		MPI_Status st;
 
 		/*Recieve the imag array information*/
-		MPI_Recv(img + (array_index), 1620000, MPI_UNSIGNED_CHAR, i, 0, MPI_COMM_WORLD, &st);
+		MPI_Recv(img + (array_index), 405000, MPI_UNSIGNED_CHAR, i, 0, MPI_COMM_WORLD, &st);
 
 		/*Increase the array_index*/
-		array_index -= 1620000;
+		array_index -= 405000;
 	}
 	/*Write section*/
 	unsigned char bmpfileheader[14] = { 'B', 'M', 0, 0, 0, 0, 0, 0, 0, 0, 54, 0, 0, 0 };
@@ -183,7 +195,7 @@ void embarrassedly_master(int world_size, const int iXmax, const int iYmax, cons
 void embarrassedly_slave(int world_size, const int iXmax, const int iYmax, const int iterations, const float realMin, const float realMax)
 {
 	/*Recieved array stored in this variable*/
-	unsigned char* myBuffer = new unsigned char[1620000];
+	unsigned char* myBuffer = new unsigned char[405000];
 
 	/*Recieved imaginary information stored in this variables*/
 	double myImagMin;
@@ -196,16 +208,16 @@ void embarrassedly_slave(int world_size, const int iXmax, const int iYmax, const
 	MPI_Recv(&myImagMin, 1, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD, &st2);
 
 	/*Recieve the array information */
-	MPI_Recv(myBuffer, 1620000, MPI_UNSIGNED_CHAR, 0, 0, MPI_COMM_WORLD, &st3);
+	MPI_Recv(myBuffer, 405000, MPI_UNSIGNED_CHAR, 0, 0, MPI_COMM_WORLD, &st3);
 
 	/*Calculate end of imaginary number*/
 	myImagMax = myImagMin + 0.49;
 
 	/*Execute mandelbrot with proccess infromation*/
-	madelbrot(iXmax, 300, iterations, realMin, realMax, myImagMin, myImagMax, myBuffer);
+	madelbrot(iXmax, 150, iterations, realMin, realMax, myImagMin, myImagMax, myBuffer);
 
 	/*Send the calculated array*/
-	MPI_Send(myBuffer, 1620000, MPI_UNSIGNED_CHAR, 0, 0, MPI_COMM_WORLD);
+	MPI_Send(myBuffer, 405000, MPI_UNSIGNED_CHAR, 0, 0, MPI_COMM_WORLD);
 }
 
 void oneline_master(int world_size, const int iXmax, const int iYmax, const int iterations, const float realMin, const float realMax) {
@@ -340,6 +352,187 @@ void oneline_slave(int world_size, const int iXmax, const int iYmax, const int i
 	
 }
 
+
+void dynamic_master( int world_size, const int iXmax, const int iYmax, const int iterations, const float realMin, const float realMax, MPI_Datatype SendPack, MPI_Datatype RecvPack) {
+	
+	const int tag = 13;
+	
+	/*Image pointer to create bmp file*/
+	unsigned char *img = NULL;
+
+	/*Pointer to file*/
+	FILE * fp;
+
+	/*bmp file nmae*/
+	char *filename = "new1.bmp";    //bmp version
+
+	/*Set start time to calculate running time*/
+	double t1 = MPI_Wtime();
+	/*Divide the imaginary section to number of proccesses.*/
+	float myImagMin = -1.00;
+	float myImagMax;
+
+	/*File section*/
+	int filesize = 54 + 3 * iXmax * iYmax;
+	if (img)
+		delete img;
+	img = new unsigned char[3 * iXmax * iYmax];
+	memset(img, 0, sizeof(img));
+
+	int array_index = 1619999 - 2700;
+	float yIncrement = 0;
+
+	float temp_Inc= (-1.00f + yIncrement);
+
+
+	for (int i = 1; i < world_size; i++)
+	{
+		
+		infoSend infSend;
+		infSend.yMin = temp_Inc;
+		infSend.startIndex = array_index;
+
+		/*Send the incerment_imag number to i proccess as start imaginary number*/
+		MPI_Send(&infSend, 1, SendPack, i, tag, MPI_COMM_WORLD);
+		//printf("%f is y\t%i is arrayIndex sent to %i\n", temp_Inc,array_index, i);
+
+		/*Decrease the pionner*/
+		array_index -= 2700;
+
+		/*Increase the incerment_imag*/
+		yIncrement += (float)2.00 / 600;
+		temp_Inc = (-1.00 + yIncrement);
+	}
+	while (array_index > 10800)
+	{
+		infoSend infSend;
+		MPI_Status st;
+
+		infoRecieve infRecv;
+
+		MPI_Recv(&infRecv, 1, RecvPack, MPI_ANY_SOURCE, tag, MPI_COMM_WORLD, &st);
+
+		memcpy(img + infRecv.startIndex, infRecv.buffer, 2700);
+
+		/*Decrease the pionner*/
+		array_index -= 2700;
+
+		/*Increase the incerment_imag*/
+		yIncrement += (float)2.00 / 600;
+		temp_Inc = (-1.00 + yIncrement);
+
+		infSend.yMin = temp_Inc;
+		infSend.startIndex = array_index;
+
+		/*Send the incerment_imag number to i proccess as start imaginary number*/
+		MPI_Send(&infSend, 1, SendPack, st.MPI_SOURCE, tag, MPI_COMM_WORLD);
+	}
+	for (int i = 1; i < world_size; i++)
+	{
+		infoSend infSend;
+		array_index -= 2700;
+
+		/*Increase the incerment_imag*/
+		yIncrement += (float)2.00 / 600;
+		temp_Inc = (-1.00 + yIncrement);
+
+		infSend.yMin = temp_Inc;
+		infSend.startIndex = array_index;
+
+		/*Send the incerment_imag number to i proccess as start imaginary number*/
+		MPI_Send(&infSend, 1, SendPack, i,tag, MPI_COMM_WORLD);
+	}
+	for (int i = 1; i < world_size; i++)
+	{
+		MPI_Status st, st2;
+		infoRecieve infRecv;
+		infoSend infSend;
+		MPI_Recv(&infRecv, 1, RecvPack, i, tag, MPI_COMM_WORLD, &st);
+		memcpy(img + infRecv.startIndex, infRecv.buffer, 2700);
+		infSend.startIndex = -10;
+		MPI_Send(&infSend, 1, SendPack, i, tag, MPI_COMM_WORLD);
+	}
+	/*Divide the img array with this pionner*/
+
+	/*Write section*/
+	unsigned char bmpfileheader[14] = { 'B', 'M', 0, 0, 0, 0, 0, 0, 0, 0, 54, 0, 0, 0 };
+	unsigned char bmpinfoheader[40] = { 40, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 24, 0 };
+	unsigned char bmppad[3] = { 0, 0, 0 };
+
+	bmpfileheader[2] = (unsigned char)(filesize);
+	bmpfileheader[3] = (unsigned char)(filesize >> 8);
+	bmpfileheader[4] = (unsigned char)(filesize >> 16);
+	bmpfileheader[5] = (unsigned char)(filesize >> 24);
+
+	bmpinfoheader[4] = (unsigned char)(iXmax);
+	bmpinfoheader[5] = (unsigned char)(iXmax >> 8);
+	bmpinfoheader[6] = (unsigned char)(iXmax >> 16);
+	bmpinfoheader[7] = (unsigned char)(iXmax >> 24);
+	bmpinfoheader[8] = (unsigned char)(iYmax);
+	bmpinfoheader[9] = (unsigned char)(iYmax >> 8);
+	bmpinfoheader[10] = (unsigned char)(iYmax >> 16);
+	bmpinfoheader[11] = (unsigned char)(iYmax >> 24);
+
+	fp = fopen(filename, "wb");
+	fwrite(bmpfileheader, 1, 14, fp);
+	fwrite(bmpinfoheader, 1, 40, fp);
+	//writing pixels in BMP file
+	for (int i = 0; i < iYmax; i++)
+	{
+		fwrite(img + (iXmax *(iYmax - i - 1) * 3), 3, iXmax, fp);
+		fwrite(bmppad, 1, (4 - (iXmax * 3) % 4) % 4, fp);
+	}
+	fclose(fp);
+
+	/*Print the runnig time duretion*/
+	std::cout << "The time is:" << MPI_Wtime() - t1 << " from proccess: 0\n";
+	
+}
+
+
+void dynamic_slave(int rank, int world_size, const int iXmax, const int iYmax, const int iterations, const float realMin, const float realMax, MPI_Datatype SendPack, MPI_Datatype RecvPack) {
+	const int tag = 13;
+	
+
+	bool flag = true;
+	while (flag)
+	{
+		/*Recieved array stored in this variable*/
+		unsigned char* myBuffer = new unsigned char[2700];
+		memset(myBuffer, 0, 2700);
+
+		/*Recieved imaginary information stored in this variables*/
+		float myImagMin;
+		float myImagMax;
+
+		MPI_Status st;
+		infoSend inf_r;
+		MPI_Recv(&inf_r, 1, SendPack, 0, tag, MPI_COMM_WORLD, &st);
+		
+		if (inf_r.startIndex == -10)
+		{
+			flag = false;
+			
+		}
+		else
+		{
+			myImagMin = inf_r.yMin;
+			myImagMax = myImagMin + (float)2.00 / 600;
+			
+
+			/*Execute mandelbrot with proccess infromation*/
+			madelbrot(iXmax, 1, iterations, realMin, realMax, myImagMin, myImagMax, myBuffer);
+
+			infoRecieve inf_s;
+			inf_s.startIndex = inf_r.startIndex;
+			inf_s.yMin = inf_r.yMin;
+			memcpy(inf_s.buffer, myBuffer, 2700);
+			MPI_Send(&inf_s, 1, RecvPack, 0, tag, MPI_COMM_WORLD);
+		}
+	}
+}
+
+/*Main Function*/
 int main(int argc, char** argv) {
 	//initial setting
 	/*Use for keep information about proccesses*/
@@ -362,16 +555,52 @@ int main(int argc, char** argv) {
 	const int iXmax = 900;
 	const int iYmax = 600;
 
+
+	const int nitems1 = 3;
+	int blocklengths1[3] = { 1,1,2700 };
+	MPI_Datatype types1[3] = { MPI_FLOAT, MPI_INT,MPI_UNSIGNED_CHAR };
+	MPI_Datatype RecvPack;
+	MPI_Aint     offsets1[3];
+
+	offsets1[0] = offsetof(infoRecieve, yMin);
+	offsets1[1] = offsetof(infoRecieve, startIndex);
+	offsets1[2] = offsetof(infoRecieve, buffer);
+
+	MPI_Type_create_struct(nitems1, blocklengths1, offsets1, types1, &RecvPack);
+	MPI_Type_commit(&RecvPack);
+
+	const int nitems = 2;
+	int          blocklengths[2] = { 1,1 };
+	MPI_Datatype types[2] = { MPI_FLOAT, MPI_INT };
+	MPI_Datatype SendPack;
+	MPI_Aint     offsets[2];
+
+	offsets[0] = offsetof(infoSend, yMin);
+	offsets[1] = offsetof(infoSend, startIndex);
+
+	MPI_Type_create_struct(nitems, blocklengths, offsets, types, &SendPack);
+	MPI_Type_commit(&SendPack);
+
+
+
+
+
 	/*Master section*/
 	if (myid == 0)
 	{
 		//embarrassedly_master(world_size, iXmax, iYmax, iterations, realMin, realMax);
-		oneline_master(world_size, iXmax, iYmax, iterations, realMin, realMax);
+		//oneline_master(world_size, iXmax, iYmax, iterations, realMin, realMax);
+		dynamic_master(world_size, iXmax, iYmax, iterations, realMin, realMax, SendPack, RecvPack);
 	}
 	else {
 		//embarrassedly_slave(world_size, iXmax, iYmax, iterations, realMin, realMax);
-		oneline_slave(world_size, iXmax, iYmax, iterations, realMin, realMax);
+		//oneline_slave(world_size, iXmax, iYmax, iterations, realMin, realMax);
+		dynamic_slave(myid,world_size, iXmax, iYmax, iterations, realMin, realMax,SendPack,RecvPack);
 	}
+
+	MPI_Barrier(MPI_COMM_WORLD);
+	MPI_Type_free(&SendPack);
+	MPI_Type_free(&RecvPack);
 	/*Finilized the MPI*/
 	MPI_Finalize();
 	return 0;
